@@ -1,29 +1,3 @@
-<!--
-  Los componentes de la iluminación, tanto color como intensidad y la posición fueron extraídos del material proveído
-por el profesor dentro del Three.js Fundamentals, específicamente el material de lección: threejs-lights-directional, 
-del cual se hace uso de la GUI presente (dat.GUI) la cual se extiende para los diferentes requisitos del trabajo, y para
-el cual debemos destacar que cuenta con un issue abierto en su repositorio: Cannot update NumberControllerBox with .listen()
-#179. https://github.com/dataarts/dat.gui/issues/179
-
-Este error de la GUI no permite que podamos actualizar los números una vez que modificamos el object asociado al mismo,
-al menos si puede editarse (y mostrarse) el control deslizante o slider como menciona en el issue.
-
-El eje seleccionado para la rotación del auto es el Y debido a que intuitivamente resulta el más conveniente para la 
-perspectiva del mismo y del plano de superficie en que se encuentra. Es posible a través de la GUI realizar un giro de
-360° o 6.28 rads.
-
-Escogimos el MeshPhysicalMaterial para casi todo el auto, salvo para los faros, señaleros, radiador, guardabarros, 
-cerraduras y tazas de la ruedas, en el que utilizamos el MeshPhongMaterial con intención que estos se destaquen del resto
-al no poder ser modificados en la GUI, por decisión propia. Hemos escogido dividir en 4 piezas modificables el auto:
-carrocería, ruedas, capo y ventanas, de los que podemos variar sus atributos relacionados al tipo de material: opacity,
-clearcoat, clearcoatRoughness, roughness y metalness. 
-
-Al capo lo inicializamos con opacidad en 0 para visualizar un textura que le agregamos a una capa que se encuentra mínimamente
-por debajo, al aumentar la opacidad de este módulo o pieza se comporta igual que el resto del auto.
-
-Por diversión colocamos un personaje dentro del auto, no representa nada en absoluto. Esperamos que no reste puntos al trabajo. 
--->
-
 <!-- Licensed under a BSD license. See license.html for license -->
 <!DOCTYPE html>
 <html>
@@ -478,7 +452,7 @@ function main() {
     const capo = new THREE.Mesh(capoGeo, capoMat); car.add(capo);capo.position.set(8.5, 5.951 , 0);capo.rotation.set( 0, 1.57, 0);
 
     const loader = new THREE.TextureLoader();
-    loader.load('texture-car.jpg', (texture) => {
+    loader.load('./images/texture-car.jpg', (texture) => {
       const matCapoT = new THREE.MeshPhysicalMaterial({
         map: texture,
       });
