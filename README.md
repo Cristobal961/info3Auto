@@ -29,12 +29,15 @@ Por diversión colocamos un personaje dentro del auto, no representa nada en abs
 ## Attributions
 * Car motor lid texture
 
+![Abstract background with metal textures](https://github.com/Cristobal961/info3Auto/blob/main/images/texture-car.jpg "Abstract background with metal textures")
+
 <a href="https://www.freepik.com/photos/background">Background photo created by kjpargeter - www.freepik.com</a>
 
 * Ugandan Knuckles model and texture
+
+![Ugandan Knuckles](https://github.com/Cristobal961/info3Auto/blob/main/images/knuckles.png "Ugandan Knuckles Model")
+
 <div class="sketchfab-embed-wrapper">
-<iframe title="A 3D model" width="640" height="480" src="https://sketchfab.com/models/d6d71193eaf7498e81d84ec10eb2b576/embed?autostart=0&amp;ui_controls=1&amp;ui_infos=1&amp;ui_inspector=1&amp;ui_stop=1&amp;ui_watermark=1&amp;ui_watermark_link=1" frameborder="0" allow="autoplay; fullscreen; vr" mozallowfullscreen="true" webkitallowfullscreen="true"></iframe>
-<p style="font-size: 13px; font-weight: normal; margin: 5px; color: #4A4A4A;">
 <a href="https://sketchfab.com/3d-models/ugandan-knuckles-d6d71193eaf7498e81d84ec10eb2b576?utm_medium=embed&utm_source=website&utm_campaign=share-popup" target="_blank" style="font-weight: bold; color: #1CAAD9;">Ugandan Knuckles</a>
 by <a href="https://sketchfab.com/wardd?utm_medium=embed&utm_source=website&utm_campaign=share-popup" target="_blank" style="font-weight: bold; color: #1CAAD9;">wardd</a>
 on <a href="https://sketchfab.com?utm_medium=embed&utm_source=website&utm_campaign=share-popup" target="_blank" style="font-weight: bold; color: #1CAAD9;">Sketchfab</a>
