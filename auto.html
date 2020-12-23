@@ -1,0 +1,1102 @@
+<!--
+  Los componentes de la iluminación, tanto color como intensidad y la posición fueron extraídos del material proveído
+por el profesor dentro del Three.js Fundamentals, específicamente el material de lección: threejs-lights-directional, 
+del cual se hace uso de la GUI presente (dat.GUI) la cual se extiende para los diferentes requisitos del trabajo, y para
+el cual debemos destacar que cuenta con un issue abierto en su repositorio: Cannot update NumberControllerBox with .listen()
+#179. https://github.com/dataarts/dat.gui/issues/179
+
+Este error de la GUI no permite que podamos actualizar los números una vez que modificamos el object asociado al mismo,
+al menos si puede editarse (y mostrarse) el control deslizante o slider como menciona en el issue.
+
+El eje seleccionado para la rotación del auto es el Y debido a que intuitivamente resulta el más conveniente para la 
+perspectiva del mismo y del plano de superficie en que se encuentra. Es posible a través de la GUI realizar un giro de
+360° o 6.28 rads.
+
+Escogimos el MeshPhysicalMaterial para casi todo el auto, salvo para los faros, señaleros, radiador, guardabarros, 
+cerraduras y tazas de la ruedas, en el que utilizamos el MeshPhongMaterial con intención que estos se destaquen del resto
+al no poder ser modificados en la GUI, por decisión propia. Hemos escogido dividir en 4 piezas modificables el auto:
+carrocería, ruedas, capo y ventanas, de los que podemos variar sus atributos relacionados al tipo de material: opacity,
+clearcoat, clearcoatRoughness, roughness y metalness. 
+
+Al capo lo inicializamos con opacidad en 0 para visualizar un textura que le agregamos a una capa que se encuentra mínimamente
+por debajo, al aumentar la opacidad de este módulo o pieza se comporta igual que el resto del auto.
+
+Por diversión colocamos un personaje dentro del auto, no representa nada en absoluto. Esperamos que no reste puntos al trabajo. 
+-->
+
+<!-- Licensed under a BSD license. See license.html for license -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+    html, body {
+        margin: 0;
+        height: 100%;
+    }
+    #c {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>`
+  </body>
+<script type="module">
+import * as THREE from './resources/threejs/r122/build/three.module.js';
+import {OrbitControls} from './resources/threejs/r122/examples/jsm/controls/OrbitControls.js';
+import {GUI} from './3rdparty/dat.gui.module.js';
+import {GLTFLoader} from './resources/threejs/r122/examples/jsm/loaders/GLTFLoader.js';
+
+
+function main() {
+  const canvas = document.querySelector('#c');
+  const renderer = new THREE.WebGLRenderer({canvas});
+
+  const fov = 45;
+  const aspect = 2;  // the canvas default
+  const near = 0.1;
+  const far = 1000;
+  const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
+  camera.position.set(5, 15, 30);
+
+  const controls = new OrbitControls(camera, canvas);
+  controls.target.set(0, 5, 0);
+  controls.update();
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x202d42);
+
+  {
+    const gltfLoader = new GLTFLoader();
+    gltfLoader.load('../model-uk/scene.gltf', (gltf) => {
+      const root = gltf.scene;
+      root.position.x=-2;
+      root.position.y=2.3;
+      root.position.z=2.8;
+      root.rotation.y=1;
+      gltf.scene.scale.set(0.015,0.015,0.015)
+      scene.add(root);
+
+      // compute the box that contains all the stuff
+      // from root and below
+      const box = new THREE.Box3().setFromObject(root);
+      const boxSize = box.getSize(new THREE.Vector3()).length();
+      const boxCenter = [0,0,0];
+
+      // set the camera to frame the box
+     // frameArea(boxSize * 0.5, boxSize, boxCenter, camera);
+
+    });
+  }
+
+  function frameArea(sizeToFitOnScreen, boxSize, boxCenter, camera) {
+    const halfSizeToFitOnScreen = sizeToFitOnScreen * 0.5;
+    const halfFovY = THREE.MathUtils.degToRad(camera.fov * .5);
+    const distance = halfSizeToFitOnScreen / Math.tan(halfFovY);
+    // compute a unit vector that points in the direction the camera is now
+    // in the xz plane from the center of the box
+    const direction = (new THREE.Vector3())
+        .subVectors(camera.position, boxCenter)
+        .multiply(new THREE.Vector3(1, 0, 1))
+        .normalize();
+
+    // move the camera to a position distance units way from the center
+    // in whatever direction the camera was from the center already
+    //camera.position.copy(direction.multiplyScalar(distance).add(boxCenter));
+
+    // pick some near and far values for the frustum that
+    // will contain the box.
+    camera.near = 0.1;
+    camera.far = 1000;
+
+    camera.updateProjectionMatrix();
+
+    // point the camera to look at the center of the box
+    //camera.lookAt(boxCenter.x, boxCenter.y, boxCenter.z);
+  }
+
+  {
+    const planeSize = 100;
+    
+
+    const loader = new THREE.TextureLoader();
+    const texture = loader.load('resources/images/checker.png');
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.magFilter = THREE.NearestFilter;
+    const repeats = planeSize / 2;
+    texture.repeat.set(repeats, repeats);
+
+    const planeGeo = new THREE.PlaneBufferGeometry(planeSize, planeSize);
+    const planeMat = new THREE.MeshPhongMaterial({
+      map: texture,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(planeGeo, planeMat);
+    mesh.rotation.x = Math.PI * -.5;
+    scene.add(mesh);
+  }
+
+  //    GUI CAMBIOS
+
+  class ColorGUIHelper {
+    constructor(object, prop) {
+      this.object = object;
+      this.prop = prop;
+    }
+    get value() {
+      return `#${this.object[this.prop].getHexString()}`;
+    }
+    set value(hexString) {
+      this.object[this.prop].set(hexString);
+    }
+  }
+
+
+  //  ILUMINACION Y CAMBIO DE ATRIBUTOS DE LOS MATERIALES
+  {
+    const color = 0xFFFFFF;
+    const intensity = 1.9;
+    const light = new THREE.DirectionalLight(color, intensity);
+    light.position.set(0, 10, 0);
+    light.target.position.set(-20, -35,-45 );
+    scene.add(light);
+    scene.add(light.target);
+
+    var car = new THREE.Group();
+    car.rotation.set( 0, 5.42, 0 );
+
+
+	//  MATERIALES QUE VARIAN EN EL DROPDOWNLIST
+	var boxMat = new THREE.MeshPhysicalMaterial({color: '#188500',opacity: 1, roughness:0.4, clearcoat:0.8 , metalness:0.1, clearcoatRoughness:0.7 ,transparent: true,});
+	var capoMat = new THREE.MeshPhysicalMaterial({color: '#1f780c',opacity: 0, roughness:0.5, clearcoat:0.5 , metalness:0.5, clearcoatRoughness:0.5 ,transparent: true,});
+	var wheelMat = new THREE.MeshPhysicalMaterial({color: '#121212',opacity: 1, roughness:0.5, clearcoat:0.5 , metalness:0.5, clearcoatRoughness:0.5 ,transparent: true,});
+	var glassMat = new THREE.MeshPhysicalMaterial({color: '#3a9e9b',opacity: 0.5, roughness:0.5, clearcoat:0.5 , metalness:0.5, clearcoatRoughness:0.5 ,transparent: true,});
+
+
+  
+  const gui = new GUI();
+  var material =  boxMat ;
+  var rot = gui.addFolder('Rotacion sobre el eje Y');
+  rot.add(car.rotation, 'y', 0, 6.2832, .01);
+  rot.open();
+    
+  var mat = gui.addFolder('Material: MeshPysicalMAterial');
+  var colorParte = mat.addColor(new ColorGUIHelper(material, 'color'), 'value').name('color');
+  var opacity = mat.add(material , 'opacity', 0, 1, 0.01);
+  var clearcoat = mat.add(material , 'clearcoat', 0, 1,0.01);
+  var clearcoatRoughness = mat.add(material , 'clearcoatRoughness', 0, 1,0.01);
+  var roughness = mat.add(material , 'roughness', 0, 1,0.01);
+  var metalness= mat.add(material , 'metalness', 0, 1,0.01);
+  mat.open();
+
+	var grupo = {Pieza: "Carroceria"};
+  var partes = gui.addFolder("Módulos");
+	var dropdown = partes.add(grupo,"Pieza",["Carroceria","Ruedas","Capo","Ventanas"]);
+	dropdown.onChange(changeMaterial);
+  dropdown.setValue("Carroceria");
+  partes.open()
+  
+	 function changeMaterial(mater){
+		if (mater == "Carroceria"){
+      var newMaterial = boxMat;
+      material = boxMat;
+		}
+		if (mater == "Ruedas"){
+      newMaterial = wheelMat;
+      material = wheelMat;
+		}
+		if (mater == "Capo"){
+      newMaterial = capoMat;
+      material = capoMat;
+		}
+		if (mater == "Ventanas"){
+      newMaterial = glassMat;
+      material = glassMat;
+		}
+    
+    colorParte.object = new ColorGUIHelper(newMaterial, 'color');
+    opacity.object = newMaterial;
+    clearcoat.object = newMaterial;
+		clearcoatRoughness.object = newMaterial;
+		roughness.object = newMaterial;
+    metalness.object = newMaterial;
+    gui.updateDisplay();
+    
+	}
+
+
+  var luces = gui.addFolder('Color, Intensidad y Posición de la Luz');
+  luces.addColor(new ColorGUIHelper(light, 'color'), 'value').name('color');
+  luces.add(light, 'intensity', 0, 2, 0.01);
+  luces.add(light.target.position, 'x', -50, 50, .01);
+  luces.add(light.target.position, 'y', -50, 50, .01);
+  luces.add(light.target.position, 'z', -50, 50, .01);
+  luces.open();
+  }
+
+  {
+// MESH's MODULARES DEL AUTO
+    // MODULO 1 --> Tabla mas larga
+    const box1Width =  12;
+    const box1Height = 2;  
+    const box1Depth = 25;  
+    const box1Geo = new THREE.BoxBufferGeometry(box1Width, box1Height, box1Depth);
+    const box1 = new THREE.Mesh(box1Geo, boxMat);
+    box1.position.set(0, 5 , 0);
+    box1.rotation.set( 0, 1.57, 0);
+    car.add(box1);
+    // MODULO 2 -->  Tabla por debajo de la tabla larga
+    const box2Width =  12; const box2Height = 3;  const box2Depth = 12;  
+    const box2Geo = new THREE.BoxBufferGeometry(box2Width, box2Height, box2Depth);
+    const box2 = new THREE.Mesh(box2Geo, boxMat);
+    box2.position.set(0, 2.5 , 0);    box2.rotation.set( 0, 1.57, 0);
+    car.add(box2);
+    // MODULO 3 -->  Tabla frente a las ruedas
+    const box3Width =  12;
+    const box3Height = 3;  
+    const box3Depth = 2;  
+    const box3Geo = new THREE.BoxBufferGeometry(box3Width, box3Height, box3Depth);
+    const box3 = new THREE.Mesh(box3Geo, boxMat);
+    box3.position.set(11.5, 2.5 , 0);
+    box3.rotation.set( 0, 1.57, 0);
+    car.add(box3);
+    // MODULO 4 -->  Tabla detras de las ruedas
+    const box4Width =  12;
+    const box4Height = 3;  
+    const box4Depth = 2;  
+    const box4Geo = new THREE.BoxBufferGeometry(box4Width, box4Height, box4Depth);
+    const box4 = new THREE.Mesh(box4Geo, boxMat);
+    box4.position.set(-11.5, 2.5 , 0);
+    box4.rotation.set( 0, 1.57, 0);
+    car.add(box4);
+    // MODULO 5 -->  Tabla entre las ruedas delanteras
+    const box5Width =  9;
+    const box5Height = 3;  
+    const box5Depth = 4.5;  
+    const box5Geo = new THREE.BoxBufferGeometry(box5Width, box5Height, box5Depth);
+    const box5 = new THREE.Mesh(box5Geo, boxMat);
+    box5.position.set(8.25, 2.5 , 0);
+    box5.rotation.set( 0, 1.57, 0);
+    car.add(box5);
+    // MODULO 6 -->  Tabla entre las ruedas traseras
+    const box6Width =  9;
+    const box6Height = 3;  
+    const box6Depth = 4.5;  
+    const box6Geo = new THREE.BoxBufferGeometry(box6Width, box6Height, box6Depth);
+    const box6 = new THREE.Mesh(box6Geo, boxMat);
+    box6.position.set(-8.25, 2.5 , 0);
+    box6.rotation.set( 0, 1.57, 0);
+    car.add(box6);
+
+    // VIDRIOS
+ // MODULO 7 -->  Tabla de arriba/ cupula1
+    const radius7Top =  6;
+    const radius7Bottom =  8.4;  
+    const box7height =  2.9;  
+    const box7radialSegments =  4;  
+    const box7Geo = new THREE.CylinderBufferGeometry(radius7Top, radius7Bottom, box7height, box7radialSegments);
+    const box7 = new THREE.Mesh(box7Geo, glassMat);
+    box7.position.set(-6.5, 7.4 , 0);
+    box7.rotation.set( 0, 0.785398, 0);
+    car.add(box7);
+ // MODULO 8 -->  Tabla de arriba/ cupula2
+ const radius8Top =  6;
+    const radius8Bottom =  8.4;  
+    const box8height =  2.9;  
+    const box8radialSegments =  4;  
+    const box8Geo = new THREE.CylinderBufferGeometry(radius8Top, radius8Bottom, box8height, box8radialSegments);
+    const box8 = new THREE.Mesh(box8Geo, glassMat);
+    box8.position.set(-1.5, 7.4 , 0);
+    box8.rotation.set( 0, 0.785398, 0);
+    car.add(box8);
+    // MODULO 9 --> Techo
+    const box9Width =  8.46;
+    const box9Height = 0.1;  
+    const box9Depth = 13.5;  
+    const box9Geo = new THREE.BoxBufferGeometry(box9Width, box9Height, box9Depth);
+    const box9 = new THREE.Mesh(box9Geo, boxMat);
+    box9.position.set(-4, 8.9 , 0);
+    box9.rotation.set( 0, 1.57, 0);
+    car.add(box9);
+
+    // Tiras de car en los vidrios
+    // MODULO 10 --> Tira 1
+    const box10Width =  3.4;
+    const box10Height = 0.1;  
+    const box10Depth = 0.5;  
+    const box10Geo = new THREE.BoxBufferGeometry(box10Width, box10Height, box10Depth);
+    const box10 = new THREE.Mesh(box10Geo, boxMat);
+    box10.position.set(-1.5, 7.4 , 5.08 );
+    box10.rotation.set( 0, 1.57, 1.02974);
+    car.add(box10);
+    // MODULO 11 --> Tira 2
+    const box11Width =  3.4;
+    const box11Height = 0.1;  
+    const box11Depth = 0.5;  
+    const box11Geo = new THREE.BoxBufferGeometry(box11Width, box11Height, box11Depth);
+    const box11 = new THREE.Mesh(box11Geo, boxMat);
+    box11.position.set(-6.5, 7.4 , 5.08 );
+    box11.rotation.set( 0, 1.57, 1.02974);
+    car.add(box11);
+    // MODULO 12 --> Tira 3
+    const box12Width =  3.4;
+    const box12Height = 0.1;  
+    const box12Depth = 0.5;  
+    const box12Geo = new THREE.BoxBufferGeometry(box12Width, box12Height, box12Depth);
+    const box12 = new THREE.Mesh(box12Geo, boxMat);
+    box12.position.set(-6.5, 7.4 , -5.08 );
+    box12.rotation.set( 0, -1.57, 1.02974);
+    car.add(box12);
+    // MODULO 13 --> Tira 4
+    const box13Width =  3.4;
+    const box13Height = 0.1;  
+    const box13Depth = 0.5;  
+    const box13Geo = new THREE.BoxBufferGeometry(box13Width, box13Height, box13Depth);
+    const box13 = new THREE.Mesh(box13Geo, boxMat);
+    box13.position.set(-1.5, 7.4 , -5.08 );
+    box13.rotation.set( 0, -1.57, 1.02974);
+    car.add(box13);
+    // MODULO 14 --> Tira Larga 1
+    const box14Width =  0.5;
+    const box14Height = 0.1;  
+    const box14Depth = 16.3;  
+    const box14Geo = new THREE.BoxBufferGeometry(box14Width, box14Height, box14Depth);
+    const box14 = new THREE.Mesh(box14Geo, boxMat);
+    box14.position.set(-4, 6.2 , 5.8 );
+    box14.rotation.set( 0, 1.57, 1.02974);
+    car.add(box14);
+    // MODULO 15 --> Tira Larga 2
+    const box15Width =  0.5;
+    const box15Height = 0.1;  
+    const box15Depth = 16.3;  
+    const box15Geo = new THREE.BoxBufferGeometry(box15Width, box15Height, box15Depth);
+    const box15 = new THREE.Mesh(box15Geo, boxMat);
+    box15.position.set(-4, 6.2 , -5.8 );
+    box15.rotation.set( 0, -1.57, 1.02974);
+    car.add(box15);
+    // MODULO 16 --> Tira Larga 3
+    const box16Width =  0.5;
+    const box16Height = 0.1;  
+    const box16Depth = 13.5;  
+    const box16Geo = new THREE.BoxBufferGeometry(box16Width, box16Height, box16Depth);
+    const box16 = new THREE.Mesh(box16Geo, boxMat);
+    box16.position.set(-4, 8.7 , -4.299 );
+    box16.rotation.set( 0, -1.57, 1.02974);
+    car.add(box16);
+    // MODULO 17 --> Tira Larga 4
+    const box17Width =  0.5;
+    const box17Height = 0.1;  
+    const box17Depth = 13.5; 
+    const box17Geo = new THREE.BoxBufferGeometry(box17Width, box17Height, box17Depth);
+    const box17 = new THREE.Mesh(box17Geo, boxMat);
+    box17.position.set(-4, 8.7 , 4.287 );
+    box17.rotation.set( 0, 1.57, 1.02974);
+    car.add(box17);
+    // MODULO 18 --> Tira Larga 5
+    const box18Width =  0.5;
+    const box18Height = 0.1;  
+    const box18Depth = 8.46; 
+    const box18Geo = new THREE.BoxBufferGeometry(box18Width, box18Height, box18Depth);
+    const box18 = new THREE.Mesh(box18Geo, boxMat);
+    box18.position.set(-10.783, 8.7 , 0 );
+    box18.rotation.set( 0, 0, 1.02974);
+    car.add(box18);
+    // MODULO 19 --> Tira Larga 6
+    const box19Width =  0.53;
+    const box19Height = 0.1;  
+    const box19Depth = 11.4; 
+    const box19Geo = new THREE.BoxBufferGeometry(box19Width, box19Height, box19Depth);
+    const box19 = new THREE.Mesh(box19Geo, boxMat);
+    box19.position.set(-12.24, 6.2 , 0 );
+    box19.rotation.set( 0, 0, 1.02974);
+    car.add(box19);
+    // MODULO 20 --> Tira Larga 7
+    const box20Width =  0.5;
+    const box20Height = 0.1;  
+    const box20Depth = 8.46; 
+    const box20Geo = new THREE.BoxBufferGeometry(box20Width, box20Height, box20Depth);
+    const box20 = new THREE.Mesh(box20Geo, boxMat);
+    box20.position.set(2.8, 8.7 , 0 );
+    box20.rotation.set( 0, 0, -1.02974);
+    car.add(box20);
+    // MODULO 21 --> Tira Larga 8
+    const box21Width =  0.52;
+    const box21Height = 0.1;  
+    const box21Depth = 11.4; 
+    const box21Geo = new THREE.BoxBufferGeometry(box21Width, box21Height, box21Depth);
+    const box21 = new THREE.Mesh(box21Geo, boxMat);
+    box21.position.set(4.24, 6.2 , 0 );
+    box21.rotation.set( 0, 0, -1.02974);
+    car.add(box21);
+// TIRAS INCLINADAS 
+    // MODULO 22 --> Tira inclinada 1
+    const box22Width =  3.2;
+    const box22Height = 0.5;  
+    const box22Depth =0.1; 
+    const box22Geo = new THREE.BoxBufferGeometry(box22Width, box22Height, box22Depth);
+    const box22 = new THREE.Mesh(box22Geo, boxMat);
+    box22.position.set(3.3, 7.4 , 5.08 );
+    box22.rotation.set( -0.541052, 0, -1.09956);
+    car.add(box22);
+    // MODULO 23 --> Tira inclinada 2
+    const box23Width = 3.2;
+    const box23Height = 0.5;  
+    const box23Depth = 0.1;  
+    const box23Geo = new THREE.BoxBufferGeometry(box23Width, box23Height, box23Depth);
+    const box23 = new THREE.Mesh(box23Geo, boxMat);
+    box23.position.set(3.3, 7.4 , -5.08 );
+    box23.rotation.set( 0.541052, 0, -1.09956);
+    car.add(box23);
+    // MODULO 24 --> Tira inclinada 3
+    const box24Width = 3.2;
+    const box24Height = 0.5;  
+    const box24Depth = 0.1;  
+    const box24Geo = new THREE.BoxBufferGeometry(box24Width, box24Height, box24Depth);
+    const box24 = new THREE.Mesh(box24Geo, boxMat);
+    box24.position.set(-11.3, 7.4 , -5.07 );
+    box24.rotation.set( 0.541052, 0, 1.09956);
+    car.add(box24);
+    // MODULO 25 --> Tira inclinada 4
+    const box25Width = 3.2;
+    const box25Height = 0.5;  
+    const box25Depth = 0.1;  
+    const box25Geo = new THREE.BoxBufferGeometry(box25Width, box25Height, box25Depth);
+    const box25 = new THREE.Mesh(box25Geo, boxMat);
+    box25.position.set(-11.3, 7.4 , 5.07 );
+    box25.rotation.set( -0.541052, 0, 1.09956);
+    car.add(box25);
+    // MODULO 26 --> capo
+
+
+    const capoWidth = 10;
+    const capoHeight = 0.1;  
+    const capoDepth = 7;  
+    const capoGeo = new THREE.BoxBufferGeometry(capoWidth, capoHeight, capoDepth);
+    const capo = new THREE.Mesh(capoGeo, capoMat); car.add(capo);capo.position.set(8.5, 5.951 , 0);capo.rotation.set( 0, 1.57, 0);
+
+    const loader = new THREE.TextureLoader();
+    loader.load('texture-car.jpg', (texture) => {
+      const matCapoT = new THREE.MeshPhysicalMaterial({
+        map: texture,
+      });
+      const capoT = new THREE.Mesh(capoGeo, matCapoT);
+      capoT.position.set(8.5, 5.951 , 0);
+      capoT.rotation.set( 0, 1.57, 0);
+      car.add(capoT);
+    });
+
+
+
+    // LUCES DELANTERAS
+    // MODULO 26 --> placa negra faro derecho
+    const faroMat = new THREE.MeshPhongMaterial({color: '#000',opacity: 1,  metalness:1.5,/* roughness:0.1,*/ transparent: true,});
+    const faroWidth = 0.1;
+    const faroHeight = 2.5;  
+    const faroDepth = 1.5;  
+    const faroGeo = new THREE.BoxBufferGeometry(faroWidth, faroHeight, faroDepth);
+    const faro = new THREE.Mesh(faroGeo, faroMat);
+    faro.position.set(12.459, 4.5 , 4.8);
+    faro.rotation.set( 0, 0, 0);
+    car.add(faro);
+    // subMODULO 1 --> faro derecho superior
+    const faroSMat = new THREE.MeshPhongMaterial({color: '#fff',opacity: 1,   transparent: true,});
+    const faroAWidth = 0.1;
+    const faroAHeight = 1.1;  
+    const faroADepth = 1.3;  
+    const faroAGeo = new THREE.BoxBufferGeometry(faroAWidth, faroAHeight, faroADepth);
+    const faroA = new THREE.Mesh(faroAGeo, faroSMat);
+    faroA.position.set(12.4699, 5.1 , 4.8);
+    faroA.rotation.set( 0, 0, 0);
+    car.add(faroA);
+    // subMODULO 2 --> faro derecho inferior
+    const faroBWidth = 0.1;
+    const faroBHeight = 1.1;  
+    const faroBDepth = 1.3;  
+    const faroBGeo = new THREE.BoxBufferGeometry(faroBWidth, faroBHeight, faroBDepth);
+    const faroB = new THREE.Mesh(faroBGeo, faroSMat);
+    faroB.position.set(12.4699, 3.9 , 4.8);
+    faroB.rotation.set( 0, 0, 0);
+    car.add(faroB);
+    // MODULO 27 -->  placa negra faro izquierdo
+    const faro2Width = 0.1;
+    const faro2Height = 2.5;  
+    const faro2Depth = 1.5;  
+    const faro2Geo = new THREE.BoxBufferGeometry(faro2Width, faro2Height, faro2Depth);
+    const faro2 = new THREE.Mesh(faro2Geo, faroMat);
+    faro2.position.set(12.459, 4.5 , -4.8);
+    faro2.rotation.set( 0, 0, 0);
+    car.add(faro2);
+    // subMODULO 1 --> faro izquierdo superior
+    const faroA2Width = 0.1;
+    const faroA2Height = 1.1;  
+    const faroA2Depth = 1.3;  
+    const faroA2Geo = new THREE.BoxBufferGeometry(faroA2Width, faroA2Height, faroA2Depth);
+    const faroA2 = new THREE.Mesh(faroA2Geo, faroSMat);
+    faroA2.position.set(12.4699, 5.1 , -4.8);
+    faroA2.rotation.set( 0, 0, 0);
+    car.add(faroA2);
+    // subMODULO 2 --> faro izquierdo inferior
+    const faroB2Width = 0.1;
+    const faroB2Height = 1.1;  
+    const faroB2Depth = 1.3;  
+    const faroB2Geo = new THREE.BoxBufferGeometry(faroB2Width, faroB2Height, faroB2Depth);
+    const faroB2 = new THREE.Mesh(faroB2Geo, faroSMat);
+    faroB2.position.set(12.4699, 3.9 , -4.8);
+    faroB2.rotation.set( 0, 0, 0);
+    car.add(faroB2);
+    // MODULO 27 --> radiador
+    const radMat = new THREE.MeshPhongMaterial({color: '#000',opacity: 1,  metalness:0.5, roughness:1.6, transparent: true,});
+    const radWidth = 0.1;
+    const radHeight = 2.5;  
+    const radDepth = 7;  
+    const radGeo = new THREE.BoxBufferGeometry(radWidth, radHeight, radDepth);
+    const rad = new THREE.Mesh(radGeo, radMat);
+    rad.position.set(12.459, 4.55 , 0);
+    rad.rotation.set( 0, 0, 0);
+    car.add(rad);
+    // MODULO 27 --> lineas radiador
+    const linMat = new THREE.MeshPhongMaterial({color: '#141414',opacity: 1,  metalness:0.5, roughness:1.6, transparent: true,});
+    const linWidth = 0.1;
+    const linHeight = 0.4;  
+    const linDepth = 6.7;  
+    const linGeo = new THREE.BoxBufferGeometry(linWidth, linHeight, linDepth);
+    // LINEA 1
+    const lin1 = new THREE.Mesh(linGeo, linMat);
+    lin1.position.set(12.5, 3.65 , 0);
+    lin1.rotation.set( 0, 0, 0);
+    car.add(lin1);
+    // LINEA 2
+    const lin2 = new THREE.Mesh(linGeo, linMat);
+    lin2.position.set(12.5, 4.25 , 0);
+    lin2.rotation.set( 0, 0, 0);
+    car.add(lin2);
+    // LINEA 3
+    const lin3 = new THREE.Mesh(linGeo, linMat);
+    lin3.position.set(12.5, 4.85 , 0);
+    lin3.rotation.set( 0, 0, 0);
+    car.add(lin3);
+    // LINEA 4
+    const lin4 = new THREE.Mesh(linGeo, linMat);
+    lin4.position.set(12.5, 5.45 , 0);
+    lin4.rotation.set( 0, 0, 0);
+    car.add(lin4);
+    // MODULO 28 --> señalero derecho
+    const senMat = new THREE.MeshPhongMaterial({color: '#f75707',opacity: 1,   transparent: true,});
+    const senWidth = 0.1;
+    const senHeight = 0.5;  
+    const senDepth = 1.5;  
+    const senGeo = new THREE.BoxBufferGeometry(senWidth, senHeight, senDepth);
+    const sen = new THREE.Mesh(senGeo, senMat);
+    sen.position.set(12.83, 2.3 , 4.5);
+    sen.rotation.set( 0, 0, 0);
+    car.add(sen);
+    // MODULO 29 --> señalero izquierdo
+    const sen2Width = 0.1;
+    const sen2Height = 0.5;  
+    const sen2Depth = 1.5;  
+    const sen2Geo = new THREE.BoxBufferGeometry(sen2Width, sen2Height, sen2Depth);
+    const sen2 = new THREE.Mesh(sen2Geo, senMat);
+    sen2.position.set(12.83, 2.3 , -4.5);
+    sen2.rotation.set( 0, 0, 0);
+    car.add(sen2);
+    // MODULO 30 --> parachoque delantero
+    const pachoMat = new THREE.MeshPhongMaterial({color: '#000',opacity: 1,  metalness:1.5,/* roughness:0.1,*/ transparent: true,});
+    const pachoWidth = 1.5;
+    const pachoHeight = 2;  
+    const pachoDepth = 13;  
+    const pachoGeo = new THREE.BoxBufferGeometry(pachoWidth, pachoHeight, pachoDepth);
+    const pacho = new THREE.Mesh(pachoGeo, pachoMat);
+    pacho.position.set(12.1, 1.8 , 0);
+    pacho.rotation.set( 0, 0, 0);
+    car.add(pacho);
+    // MODULO 31 --> parachoque trasero
+    const pacho1Width = 1;
+    const pacho1Height = 1.7;  
+    const pacho1Depth = 13;  
+    const pacho1Geo = new THREE.BoxBufferGeometry(pacho1Width, pacho1Height, pacho1Depth);
+    const pacho1 = new THREE.Mesh(pacho1Geo, pachoMat);
+    pacho1.position.set(-12.2, 1.8 , 0);
+    pacho1.rotation.set( 0, 0, 0);
+    car.add(pacho1);
+    // MODULO 32 --> guardabarros 1
+    const gbarMat = new THREE.MeshPhongMaterial({color: '#00ffdd',opacity: 1,  metalness:1.5,/* roughness:0.1,*/ transparent: true,});
+    const gbar1Width = 0.3;
+    const gbar1Height = 2.7;
+    const gbar1Depth = 1;
+    const gbar1Geo = new THREE.BoxBufferGeometry(gbar1Width, gbar1Height, gbar1Depth);
+    const gbar1 = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar1.position.set(6  , 2.2 , 5.51   );
+    gbar1.rotation.set( 0, 0, 0);
+    car.add(gbar1);
+    // g1 detras
+    const gbar1D = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar1D.position.set(6  , 3 , 5.49 );
+    gbar1D.rotation.set( 0, 0, 0);
+    car.add(gbar1D);
+
+    // MODULO 33 --> guardabarros 2
+    const gbar2Width = 0.3;
+    const gbar2Height = 2.7;
+    const gbar2Depth = 1;
+    const gbar2Geo = new THREE.BoxBufferGeometry(gbar2Width, gbar2Height, gbar2Depth);
+    const gbar2 = new THREE.Mesh(gbar2Geo, gbarMat);
+    gbar2.position.set(10.6  , 2.2 , 5.5 );
+    gbar2.rotation.set( 0, 0, 0);
+    car.add(gbar2);
+    // g2 detras
+    const gbar2D = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar2D.position.set(10.6  , 3 , 5.4 );
+    gbar2D.rotation.set( 0, 0, 0);
+    car.add(gbar2D);
+
+    // MODULO 34 --> guardabarros 3
+    const gbar3Width = 0.3;
+    const gbar3Height = 3.6;
+    const gbar3Depth = 1;
+    const gbar3Geo = new THREE.BoxBufferGeometry(gbar3Width, gbar3Height, gbar3Depth);
+    const gbar3 = new THREE.Mesh(gbar3Geo, gbarMat);
+    gbar3.position.set(8.4  , 4.15 , 5.51 );
+    gbar3.rotation.set( 0, 0, 1.5708);
+    car.add(gbar3);
+
+    // CURVATURAS
+    const innerRadius =  0.5;
+    const outerRadius =  0.79;
+    const thetaSegments = 30;  
+    const phiSegments = 2;  
+    const thetaStart = Math.PI * 0.82;  
+    const thetaLength = Math.PI * 0.6;
+    const geoCur = new THREE.RingBufferGeometry(
+      innerRadius, outerRadius,
+      thetaSegments, phiSegments,
+      thetaStart, thetaLength);
+    
+    
+    // CURVA  1
+    const cur1 = new THREE.Mesh(geoCur, gbarMat);
+    cur1.position.set(9.98  , 3.515 , 6.01 );
+    cur1.rotation.set( 0, 0, 3.4);
+    car.add(cur1);
+    // CURVA  2
+    const cur2 = new THREE.Mesh(geoCur, gbarMat);
+    cur2.position.set(6.64  , 3.515 , 6.01 );
+    cur2.rotation.set( 0, 0, 4.956);
+    car.add(cur2);
+
+
+
+    // MODULO 35 --> guardabarros 4
+    const gbar4Width = 0.3;
+    const gbar4Height = 2.7;
+    const gbar4Depth = 1;
+    const gbar4Geo = new THREE.BoxBufferGeometry(gbar4Width, gbar4Height, gbar4Depth);
+    const gbar4 = new THREE.Mesh(gbar4Geo, gbarMat);
+    gbar4.position.set(6  , 2.2 , -5.505  );
+    gbar4.rotation.set( 0, 0, 0);
+    car.add(gbar4);
+    // g4 detras
+    const gbar4D = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar4D.position.set(6  , 3 , -5.49 );
+    gbar4D.rotation.set( 0, 0, 0);
+    car.add(gbar4D);
+
+    // MODULO 36 --> guardabarros 5
+    const gbar5Width = 0.3;
+    const gbar5Height = 2.7;
+    const gbar5Depth = 1;
+    const gbar5Geo = new THREE.BoxBufferGeometry(gbar5Width, gbar5Height, gbar5Depth);
+    const gbar5 = new THREE.Mesh(gbar5Geo, gbarMat);
+    gbar5.position.set(10.6  , 2.2 , -5.505 );
+    gbar5.rotation.set( 0, 0, 0);
+    car.add(gbar5);
+    // g5 detras
+    const gbar5D = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar5D.position.set(10.6  , 3 , -5.4 );
+    gbar5D.rotation.set( 0, 0, 0);
+    car.add(gbar5D);
+
+    // MODULO 37 --> guardabarros 6
+    const gbar6Width = 0.3;
+    const gbar6Height = 3.6;
+    const gbar6Depth = 1;
+    const gbar6Geo = new THREE.BoxBufferGeometry(gbar6Width, gbar6Height, gbar6Depth);
+    const gbar6 = new THREE.Mesh(gbar6Geo, gbarMat);
+    gbar6.position.set(8.4  , 4.15 , -5.505 );
+    gbar6.rotation.set( 0, 0, 1.5708);
+    car.add(gbar6);
+
+    // g6 detras
+    const gbar6D = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar6D.position.set(8.4  , 4.15 , -5.49 );
+    gbar6D.rotation.set( 0, 0, 1.5708);
+    car.add(gbar6D);
+
+    // CURVA  3
+    const cur3 = new THREE.Mesh(geoCur, gbarMat);
+    cur3.position.set(6.64  , 3.515 , -6.01 );
+    cur3.rotation.set( 0, 3.1416, 3.4);
+    car.add(cur3);
+    // CURVA  4
+    const cur4 = new THREE.Mesh(geoCur, gbarMat);
+    cur4.position.set(9.98  , 3.515 , -6.01 );
+    cur4.rotation.set( 0, 3.1416, 5.3);
+    car.add(cur4);
+
+
+
+
+    // MODULO 38 --> guardabarros 7
+    const gbar7Width = 0.3;
+    const gbar7Height = 2.7;
+    const gbar7Depth = 1;
+    const gbar7Geo = new THREE.BoxBufferGeometry(gbar7Width, gbar7Height, gbar7Depth);
+    const gbar7 = new THREE.Mesh(gbar7Geo, gbarMat);
+    gbar7.position.set(-6  , 2.2 , -5.51 );
+    gbar7.rotation.set( 0, 0, 0);
+    car.add(gbar7);
+    // g7 detras
+    const gbar7D = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar7D.position.set(-6  , 2.6 , -5.49 );
+    gbar7D.rotation.set( 0, 0, 0);
+    car.add(gbar7D);
+
+    // MODULO 39 --> guardabarros 8
+    const gbar8Width = 0.3;
+    const gbar8Height = 2.7;
+    const gbar8Depth = 1;
+    const gbar8Geo = new THREE.BoxBufferGeometry(gbar8Width, gbar8Height, gbar8Depth);
+    const gbar8 = new THREE.Mesh(gbar8Geo, gbarMat);
+    gbar8.position.set(-10.6  , 2.2 , -5.5 );
+    gbar8.rotation.set( 0, 0, 0);
+    car.add(gbar8);
+    // g9 detras
+    const gbar9D = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar9D.position.set(-10.6  , 3 , -5.4 );
+    gbar9D.rotation.set( 0, 0, 0);
+    car.add(gbar9D);
+
+    // MODULO 40 --> guardabarros 9
+    const gbar9Width = 0.3;
+    const gbar9Height = 3.6;
+    const gbar9Depth = 1;
+    const gbar9Geo = new THREE.BoxBufferGeometry(gbar9Width, gbar9Height, gbar9Depth);
+    const gbar9 = new THREE.Mesh(gbar9Geo, gbarMat);
+    gbar9.position.set(-8.4  , 4.15 , -5.51 );
+    gbar9.rotation.set( 0, 0, 1.5708);
+    car.add(gbar9);
+    // CURVA  5
+    const cur5 = new THREE.Mesh(geoCur, gbarMat);
+    cur5.position.set(-9.98  , 3.515 , -6.01 );
+    cur5.rotation.set( 0, 3.1416, 3.4);
+    car.add(cur5);
+    // CURVA  6
+    const cur6 = new THREE.Mesh(geoCur, gbarMat);
+    cur6.position.set(-6.64  , 3.515 , -6.01 );
+    cur6.rotation.set( 0, 3.1416, 4.956);
+    car.add(cur6);
+
+    // MODULO 41 --> guardabarros 10
+    const gbar10Width = 0.3;
+    const gbar10Height = 2.7;
+    const gbar10Depth = 1;
+    const gbar10Geo = new THREE.BoxBufferGeometry(gbar10Width, gbar10Height, gbar10Depth);
+    const gbar10 = new THREE.Mesh(gbar10Geo, gbarMat);
+    gbar10.position.set(-6  , 2.2 , 5.51 );
+    gbar10.rotation.set( 0, 0, 0);
+    car.add(gbar10);
+    // g10 detras
+    const gbar10D = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar10D.position.set(-6  , 3 , 5.49 );
+    gbar10D.rotation.set( 0, 0, 0);
+    car.add(gbar10D);
+
+    // MODULO 42 --> guardabarros 11
+    const gbar11Width = 0.3;
+    const gbar11Height = 2.7;
+    const gbar11Depth = 1;
+    const gbar11Geo = new THREE.BoxBufferGeometry(gbar11Width, gbar11Height, gbar11Depth);
+    const gbar11 = new THREE.Mesh(gbar11Geo, gbarMat);
+    gbar11.position.set(-10.6  , 2.2 , 5.509 );
+    gbar11.rotation.set( 0, 0, 0);
+    car.add(gbar11);
+    // g11 detras
+    const gbar11D = new THREE.Mesh(gbar1Geo, gbarMat);
+    gbar11D.position.set(-10.6  , 3 , 5.49 );
+    gbar11D.rotation.set( 0, 0, 0);
+    car.add(gbar11D);
+
+    // MODULO 43 --> guardabarros 12
+    const gbar12Width = 0.3;
+    const gbar12Height = 3.6;
+    const gbar12Depth = 1;
+    const gbar12Geo = new THREE.BoxBufferGeometry(gbar12Width, gbar12Height, gbar12Depth);
+    const gbar12 = new THREE.Mesh(gbar12Geo, gbarMat);
+    gbar12.position.set(-8.4  , 4.15 , 5.507 );
+    gbar12.rotation.set( 0, 0, 1.5708);
+    car.add(gbar12);
+    // CURVA  7
+    const cur7 = new THREE.Mesh(geoCur, gbarMat);
+    cur7.position.set(-9.98  , 3.515 , 6.01 );
+    cur7.rotation.set( 0, 0, 4.956 );
+    car.add(cur7);
+    // CURVA  8
+    const cur8 = new THREE.Mesh(geoCur, gbarMat);
+    cur8.position.set(-6.64  , 3.515 , 6.01 );
+    cur8.rotation.set( 0, 0, 3.4 );
+    car.add(cur8);
+
+
+//  PIRAMIDES CON BASE CUADRADA PARA RELLENAR ESPACIOS
+// PIRAMIDES INFERIORES
+    const pyrRadius =  0.4; 
+    const pyrHeight = 0.5;
+    const pyrRadialSegments =  4;
+    const geoPyr = new THREE.ConeBufferGeometry(pyrRadius, pyrHeight, pyrRadialSegments);
+// piramide 1
+    const pyr1 = new THREE.Mesh(geoPyr, boxMat);
+    pyr1.position.set(4.16, 6.2 , 5.718);
+    pyr1.rotation.set( 0, 0.785398, 0);
+    car.add(pyr1);
+ // piramide 2
+    const pyr2 = new THREE.Mesh(geoPyr, boxMat);
+    pyr2.position.set(4.16, 6.2 , -5.718);
+    pyr2.rotation.set( 0, 0.785398, 0);
+    car.add(pyr2);
+ // piramide 3
+    const pyr3 = new THREE.Mesh(geoPyr, boxMat);
+    pyr3.position.set(-12.16, 6.2 , -5.7093);
+    pyr3.rotation.set( 0, 0.785398, 0);
+    car.add(pyr3);
+ // piramide 4
+    const pyr4 = new THREE.Mesh(geoPyr, boxMat);
+    pyr4.position.set(-12.16, 6.2 , 5.7093);
+    pyr4.rotation.set( 0, 0.785398, 0);
+    car.add(pyr4);
+//  PIRAMIDES SUPERIORES
+// piramide 1
+    const pyr2Radius =  0.3; 
+    const pyr2Height = 0.4;
+    const pyr2RadialSegments =  4;
+    const geoPyr2 = new THREE.ConeBufferGeometry(pyr2Radius, pyr2Height, pyr2RadialSegments);
+    const pyr5 = new THREE.Mesh(geoPyr2, boxMat);
+    pyr5.position.set(2.76, 8.709 , 4.239);
+    pyr5.rotation.set( 0, 0.785398, 0);
+    car.add(pyr5);
+// piramide 2
+    const pyr6 = new THREE.Mesh(geoPyr2, boxMat);
+    pyr6.position.set(2.76, 8.709 , -4.239);
+    pyr6.rotation.set( 0, 0.785398, 0);
+    car.add(pyr6);
+// piramide 3
+    const pyr7 = new THREE.Mesh(geoPyr2, boxMat);
+    pyr7.position.set(-10.73, 8.709 , 4.24);
+    pyr7.rotation.set( 0, 0.785398, 0);
+    car.add(pyr7);
+// piramide 4
+    const pyr8 = new THREE.Mesh(geoPyr2, boxMat);
+    pyr8.position.set(-10.73, 8.709 , -4.24);
+    pyr8.rotation.set( 0, 0.785398, 0);
+    car.add(pyr8);
+// CERRADURAS
+    const cerMat = new THREE.MeshPhongMaterial({color: '#00ffdd',opacity: 1,  metalness:1.5,/* roughness:0.1,*/ transparent: true,});
+    const cerWidth = 0.2;
+    const cerHeight = 0.5;  
+    const cerDepth = 1.5;  
+    const cerGeo = new THREE.BoxBufferGeometry(cerWidth, cerHeight, cerDepth);
+    //  cerradura delantera derecha
+    const cer1 = new THREE.Mesh(cerGeo, cerMat);
+    cer1.position.set(0, 5  , 6.1);
+    cer1.rotation.set( 0, 1.57, 0);
+    car.add(cer1);
+    //  cerradura trasera derecha 
+    const cer2Height = 0.4;
+    const cer2Depth = 1;
+    const cer2Geo = new THREE.BoxBufferGeometry(cerWidth, cer2Height, cer2Depth);
+    const cer2 = new THREE.Mesh(cer2Geo, cerMat);
+    cer2.position.set(-5, 5  , 6.1);
+    cer2.rotation.set( 0, 1.57, 0);
+    car.add(cer2);
+    //  cerradura delantera izquierda
+    const cer3 = new THREE.Mesh(cerGeo, cerMat);
+    cer3.position.set(0, 5  , -6.1);
+    cer3.rotation.set( 0, 1.57, 0);
+    car.add(cer3);
+    //  cerradura trasera izquierda 
+    const cer4 = new THREE.Mesh(cer2Geo, cerMat);
+    cer4.position.set(-5, 5  , -6.1);
+    cer4.rotation.set( 0, 1.57, 0);
+    car.add(cer4);
+ // LUCES TRASERAS
+    const faroTMat = new THREE.MeshPhongMaterial({color: '#000',opacity: 1,  metalness:1.5,/* roughness:0.1,*/ transparent: true,});
+    const faroST2Mat = new THREE.MeshPhongMaterial({color: '#f75707',opacity: 1,   transparent: true,});
+    const faroSTMat = new THREE.MeshPhongMaterial({color: '#ff0000',opacity: 1,   transparent: true,});
+    // MODULO 26 --> placa negra faro derecho
+    const faroT = new THREE.Mesh(faroGeo, faroTMat);
+    faroT.position.set(-12.459, 4.5 , 4.8);
+    car.add(faroT);
+    // subMODULO 1 --> faro derecho superior
+    const faroAT = new THREE.Mesh(faroAGeo, faroSTMat);
+    faroAT.position.set(-12.4699, 5.1 , 4.8);
+    car.add(faroAT);
+    // subMODULO 2 --> faro derecho inferior
+    const faroBT = new THREE.Mesh(faroBGeo, faroST2Mat);
+    faroBT.position.set(-12.4699, 3.9 , 4.8);
+    faroBT.rotation.set( 0, 0, 0);
+    car.add(faroBT);
+    // MODULO 27 -->  placa negra faro izquierdo
+    const faro2T = new THREE.Mesh(faro2Geo, faroTMat);
+    faro2T.position.set(-12.459, 4.5 , -4.8);
+    car.add(faro2T);
+    // subMODULO 1 --> faro izquierdo superior
+    const faroA2T = new THREE.Mesh(faroA2Geo, faroSTMat);
+    faroA2T.position.set(-12.4699, 5.1 , -4.8);
+    car.add(faroA2T);
+    // subMODULO 2 --> faro izquierdo inferior
+    const faroB2T = new THREE.Mesh(faroB2Geo, faroST2Mat);
+    faroB2T.position.set(-12.4699, 3.9 , -4.8);
+    car.add(faroB2T);
+
+
+
+    /*
+    car.position.set( 4, - 3, - 5 );
+    car.rotation.set( 4, - 3, - 5 );
+*/
+
+
+    // RUEDAS
+   // material y size de las ruedas
+    const radiusWTop = 2;
+    const radiusWBottom = 2; 
+    const heightW = 1.5;
+    const radialSegments = 100;
+    const wheelGeo = new THREE.CylinderBufferGeometry(radiusWTop, radiusWBottom, heightW, radialSegments);
+    // material y size de las tazas
+    const radiusTTop = 1.6;
+    const radiusTBottom = 1.6; 
+    const heightT = 1;
+    const tazaGeo = new THREE.CylinderBufferGeometry(radiusTTop, radiusTBottom, heightT, radialSegments);
+    const tazaMat = new THREE.MeshPhongMaterial({color: '#d9d9d9',opacity: 0.1,   transparent: true,});
+    // material y size de las lineas
+    const radiusLin =  2;
+    const heightLin =  0.1;
+    const radialSegmentsLin = 100;
+    const linTazaGeo = new THREE.ConeBufferGeometry(radiusLin, heightLin, radialSegmentsLin);
+    const linTazaMat = new THREE.MeshPhysicalMaterial({color: '#4a4a4a',opacity: 1,  metalness:0.3, /* roughness:0.1,*/  transparent: true,});
+    // RUEDA 1
+    const wheel1 = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel1.position.set(8.3, 2 , 5.7);
+    wheel1.rotation.set( 1.57, 1.57, 0);
+    car.add( wheel1 );
+    // taza 1
+    const taza1 = new THREE.Mesh(tazaGeo, tazaMat);
+    taza1.position.set(8.3, 2, 6  );
+    taza1.rotation.set( 1.57, 1.57, 0);
+    car.add( taza1 );
+    // linea 1
+    const lineT1 = new THREE.Mesh(linTazaGeo, linTazaMat);
+    lineT1.position.set(8.3, 2, 6.52  );
+    lineT1.rotation.set( 1.57, 0, 0);
+    car.add( lineT1 ); 
+    // RUEDA 2
+    const wheel2 = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel2.position.set(8.3, 2 , -5.7);
+    wheel2.rotation.set( 1.57, 1.57, 0);
+    car.add( wheel2 );
+    // taza 2
+    const taza2 = new THREE.Mesh(tazaGeo, tazaMat);
+    taza2.position.set(8.3, 2, -6);
+    taza2.rotation.set( 1.57, 1.57, 0);
+    car.add( taza2 );
+    // linea 2
+    const lineT2 = new THREE.Mesh(linTazaGeo, linTazaMat);
+    lineT2.position.set(-8.3, 2, 6.52  );
+    lineT2.rotation.set( 1.57, 0, 0);
+    car.add( lineT2 ); 
+    // RUEDA 3
+    const wheel3 = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel3.position.set(-8.3, 2 , -5.7);
+    wheel3.rotation.set( 1.57, 1.57, 0);
+    car.add( wheel3 );
+    // taza 3
+    const taza3 = new THREE.Mesh(tazaGeo, tazaMat);
+    taza3.position.set(-8.3, 2, -6);
+    taza3.rotation.set( 1.57, 1.57, 0);
+    car.add( taza3 );
+    // linea 3
+    const lineT3 = new THREE.Mesh(linTazaGeo, linTazaMat);
+    lineT3.position.set(-8.3, 2, -6.52  );
+    lineT3.rotation.set( 1.57, 0, 3.1416);
+    car.add( lineT3 ); 
+    // RUEDA 4
+    const wheel4 = new THREE.Mesh(wheelGeo, wheelMat);
+    wheel4.position.set(-8.3, 2 , 5.7);
+    wheel4.rotation.set( 1.57, 1.57, 0);
+    car.add( wheel4 );
+    // taza 4
+    const taza4 = new THREE.Mesh(tazaGeo, tazaMat);
+    taza4.position.set(-8.3, 2, 6);
+    taza4.rotation.set( 1.57, 1.57, 0);
+    car.add( taza4 );
+    // linea 4
+    const lineT4 = new THREE.Mesh(linTazaGeo, linTazaMat);
+    lineT4.position.set(8.3, 2, -6.52  );
+    lineT4.rotation.set( 1.57, 0, 3.1416);
+    car.add( lineT4 ); 
+    scene.add( car );
+
+
+
+    //  piso y cielo
+    const geoFloor = new THREE.PlaneGeometry( 100, 100, 100 );
+    const matFlorr = new THREE.MeshBasicMaterial( {color: 0x11381b, side: THREE.DoubleSide} );
+    const floor = new THREE.Mesh( geoFloor, matFlorr );
+    floor.rotation.set(1.5708,0,0);
+    floor.position.set(0,0.01,0);
+    scene.add( floor );
+  }
+
+
+
+
+
+ 
+
+
+
+
+
+  function resizeRendererToDisplaySize(renderer) {
+    const canvas = renderer.domElement;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    const needResize = canvas.width !== width || canvas.height !== height;
+    if (needResize) {
+      renderer.setSize(width, height, false);
+    }
+    return needResize;
+  }
+
+  function render() {
+
+    if (resizeRendererToDisplaySize(renderer)) {
+      const canvas = renderer.domElement;
+      camera.aspect = canvas.clientWidth / canvas.clientHeight;
+      camera.updateProjectionMatrix();
+    }
+
+    renderer.render(scene, camera);
+
+    requestAnimationFrame(render);
+  }
+
+  requestAnimationFrame(render);
+}
+
+main();
+</script>
+</html>
+
